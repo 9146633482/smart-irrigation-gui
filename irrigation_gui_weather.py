@@ -1,62 +1,52 @@
-import serial
-import time
-import requests
 import streamlit as st
+import requests
+import random
 
-# ---- SETTINGS ----
-API_KEY = "330daeb966445571600c64b3388909f2" 
-CITY = "Pune,IN"         
-SERIAL_PORT = "COM3"     
-BAUD_RATE = 9600
+# Function to get weather data using OpenWeatherMap API
+def get_weather(city="Pune", api_key="fdcc5b2fb232a3c729a38473e0970c97"):
+    try:
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        r = requests.get(url).json()
+        temp = r["main"]["temp"]
+        humidity = r["main"]["humidity"]
+        return temp, humidity
+    except:
+        return None, None
 
-# ---- Thresholds for Tomato Crop ----
-MOISTURE_THRESHOLD = 550  # Soil moisture (0-1023) for tomatoes
-TEMP_OPTIMAL = (18, 27)   # Optimal temp range in °C
-HUMIDITY_OPTIMAL = (60, 80)  # Optimal humidity %
-
-# ---- Setup Serial Connection ----
-try:
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-    time.sleep(2)
-    arduino_connected = True
-except:
-    arduino_connected = False
-
-# ---- Weather API function ----
-def get_weather():
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units=metric"
-    r = requests.get(url).json()
-    temp = r['main']['temp']
-    humidity = r['main']['humidity']
-    season = "Summer" if temp > 30 else "Winter" if temp < 15 else "Moderate"
-    return temp, humidity, season
-
-# ---- Streamlit GUI ----
+# Title
 st.title("Smart Irrigation System for Tomato Crop")
-st.write("Real-time soil moisture, temperature, and humidity monitoring.")
+st.subheader("Real-time soil moisture, temperature, and humidity monitoring")
 
-# Read soil moisture
-if arduino_connected:
-    ser.write(b"R")  # Send request (optional)
-    if ser.in_waiting > 0:
-        moisture = ser.readline().decode().strip()
-    else:
-        moisture = "No data"
-else:
-    moisture = st.slider("Soil Moisture (simulate)", 0, 1023, 400)
+# Simulate soil moisture value (0-1023)
+soil_moisture = st.slider("Soil Moisture (simulate)", 0, 1023, 500)
 
 # Get weather data
-temp, humidity, season = get_weather()
+temp, humidity = get_weather()
 
-# Decision logic
-irrigation_needed = int(moisture) < MOISTURE_THRESHOLD or temp > TEMP_OPTIMAL[1]
+if temp is None or humidity is None:
+    st.warning("Could not fetch live weather data. Using sample values.")
+    temp, humidity = 28, 60  # fallback values
 
-st.metric("Soil Moisture", f"{moisture} / 1023")
-st.metric("Temperature", f"{temp} °C")
-st.metric("Humidity", f"{humidity} %")
-st.metric("Season", season)
+# Define thresholds for tomato crop
+soil_threshold = 450  # moisture threshold for tomato (0-1023 scale)
+temp_range = (18, 30)  # ideal temperature in °C
+humidity_range = (50, 80)  # ideal humidity in %
 
-if irrigation_needed:
-    st.success("Irrigation ON - Conditions require watering.")
+# Display readings
+st.write(f"**Soil Moisture:** {soil_moisture}")
+st.write(f"**Temperature:** {temp} °C")
+st.write(f"**Humidity:** {humidity} %")
+
+# Irrigation decision logic
+if soil_moisture < soil_threshold:
+    irrigation = True
+elif temp > temp_range[1] and humidity < humidity_range[0]:
+    irrigation = True
 else:
-    st.info("Irrigation OFF - Conditions are optimal.")
+    irrigation = False
+
+# Show irrigation status
+if irrigation:
+    st.success("Irrigation ON 💧 (Conditions are dry)")
+else:
+    st.info("Irrigation OFF (Soil and weather are optimal)")
